@@ -65,6 +65,8 @@ jobs:
         run: |
           ssh -i ~/.ssh/ec2-ssh-private-key.pem -o StrictHostKeyChecking=no ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} << EOF
               cd ~/app/nginx
+              export DOCKER_IMG_NAME=${{ vars.DOCKER_IMG_NAME }}
+              export DOCKER_IMG_TAG=${{ vars.DOCKER_IMG_TAG }}
               docker compose down
               docker compose pull
               docker compose up -d
