@@ -8,27 +8,7 @@ on:
       - develop # 개발
 
 jobs:
-  build-and-push-image:
-    runs-on: ubuntu-latest
-    # GitHub environmnet를 프로필별로 적용
-    environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name == 'release' && 'stage' || github.ref_name == 'develop' && 'dev' }}
-    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/release' || github.ref == 'refs/heads/develop'
-
-    steps:
-      - uses: actions/checkout@v5
-      - name: Docker Hub Login
-        uses: docker/login-action@v3
-        with:
-          username: ${{ vars.DOCKER_USER_NAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-
-      - name: Build and Push Docker Image
-        run: |
-          docker build --platform linux/amd64 -t ${{ vars.DOCKER_REG_ORG }}/${{ vars.DOCKER_IMG_NAME }}:${{ vars.DOCKER_IMG_TAG }} .
-          docker push ${{ vars.DOCKER_REG_ORG }}/${{ vars.DOCKER_IMG_NAME }}:${{ vars.DOCKER_IMG_TAG }}
-
   deploy:
-    needs: build-and-push-image
     runs-on: ubuntu-latest
     environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name == 'release' && 'stage' || github.ref_name == 'develop' && 'dev' }}
     if: github.ref == 'refs/heads/develop'
@@ -75,6 +55,11 @@ jobs:
         run: |
           ssh -i ~/.ssh/ec2-ssh-private-key.pem ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} "mkdir -p /home/${{ vars.EC2_SERVER_USER }}/app/nginx"
           scp -i ~/.ssh/ec2-ssh-private-key.pem docker-compose.yml ${{ vars.EC2_SERVER_USER  }}@${{ secrets.EC2_SERVER_HOST }}:/home/${{ vars.EC2_SERVER_USER }}/app/nginx/
+      
+      - name: File Copy 'nginx.conf'
+        run: |
+          ssh -i ~/.ssh/ec2-ssh-private-key.pem ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} "mkdir -p /home/${{ vars.EC2_SERVER_USER }}/app/nginx"
+          scp -i ~/.ssh/ec2-ssh-private-key.pem nginx.conf ${{ vars.EC2_SERVER_USER  }}@${{ secrets.EC2_SERVER_HOST }}:/home/${{ vars.EC2_SERVER_USER }}/app/nginx/
 
       - name: Deploy to EC2 via Docker Compose
         run: |
