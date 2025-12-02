@@ -1,4 +1,4 @@
-name: CertBot CI/CD
+name: Nginx CD
 
 on:
   push:
