@@ -3,32 +3,49 @@ name: Nginx CD
 on:
   push:
     branches:
-      - main # 프로덕션
+      - main    # 운영
       - release # 스테이징
       - develop # 개발
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # 환경별 변수 적용 (prod, stage, dev)
     environment: ${{ github.ref_name == 'main' && 'prod' || github.ref_name == 'release' && 'stage' || github.ref_name == 'develop' && 'dev' }}
     if: github.ref == 'refs/heads/develop'
 
     steps:
       - uses: actions/checkout@v5
-      - name: Prepare SSH Key
+      
+      - name: SSH 키 준비하기
         run: |
           mkdir -p ~/.ssh
           echo "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2-ssh-private-key.pem
           chmod 600 ~/.ssh/ec2-ssh-private-key.pem
           ssh-keyscan -H ${{ secrets.EC2_SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      - name: Check if Docker is installed
+      # 1. .env 파일 생성
+      - name: 환경변수 파일(.env) 만들기
+        run: |
+          cat <<EOF > .env
+          # 이미지 정보
+          NGINX_IMG_NAME=${{ vars.NGINX_IMG_NAME }}
+          NGINX_IMG_TAG=${{ vars.NGINX_IMG_TAG }}
+          EOF
+
+      # 2. 파일 서버로 전송 (.env + docker-compose.yml + nginx.conf)
+      - name: 배포 파일들 EC2로 보내기
+        run: |
+          ssh -i ~/.ssh/ec2-ssh-private-key.pem ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} "mkdir -p /home/${{ vars.EC2_SERVER_USER }}/app/nginx"
+          scp -i ~/.ssh/ec2-ssh-private-key.pem docker-compose.yml .env nginx.conf ${{ vars.EC2_SERVER_USER  }}@${{ secrets.EC2_SERVER_HOST }}:/home/${{ vars.EC2_SERVER_USER }}/app/nginx/
+
+      - name: 도커 설치되어 있나 확인
         id: check-docker
         run: |
           DOCKER_EXISTS=$(ssh -i ~/.ssh/ec2-ssh-private-key.pem -o StrictHostKeyChecking=no ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} 'command -v docker >/dev/null && echo "true" || echo "false"')
           echo "docker_exists=$DOCKER_EXISTS" >> $GITHUB_OUTPUT
 
-      - name: Install Docker on EC2
+      - name: 도커 없으면 설치하기
         if: steps.check-docker.outputs.docker_exists == 'false'
         run: |
           ssh -i ~/.ssh/ec2-ssh-private-key.pem -o StrictHostKeyChecking=no ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} << 'EOF'
@@ -51,23 +68,24 @@ jobs:
               sudo usermod -aG docker $USER
           EOF
 
-      - name: File Copy 'docker-compose.yml'
-        run: |
-          ssh -i ~/.ssh/ec2-ssh-private-key.pem ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} "mkdir -p /home/${{ vars.EC2_SERVER_USER }}/app/nginx"
-          scp -i ~/.ssh/ec2-ssh-private-key.pem docker-compose.yml ${{ vars.EC2_SERVER_USER  }}@${{ secrets.EC2_SERVER_HOST }}:/home/${{ vars.EC2_SERVER_USER }}/app/nginx/
-      
-      - name: File Copy 'nginx.conf'
-        run: |
-          ssh -i ~/.ssh/ec2-ssh-private-key.pem ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} "mkdir -p /home/${{ vars.EC2_SERVER_USER }}/app/nginx"
-          scp -i ~/.ssh/ec2-ssh-private-key.pem nginx.conf ${{ vars.EC2_SERVER_USER  }}@${{ secrets.EC2_SERVER_HOST }}:/home/${{ vars.EC2_SERVER_USER }}/app/nginx/
-
-      - name: Deploy to EC2 via Docker Compose
+      # 3. 배포 실행
+      - name: 도커 컴포즈로 배포 시작
         run: |
           ssh -i ~/.ssh/ec2-ssh-private-key.pem -o StrictHostKeyChecking=no ${{ vars.EC2_SERVER_USER }}@${{ secrets.EC2_SERVER_HOST }} << EOF
               cd ~/app/nginx
-              export DOCKER_IMG_NAME=${{ vars.DOCKER_IMG_NAME }}
-              export DOCKER_IMG_TAG=${{ vars.DOCKER_IMG_TAG }}
               docker compose down
               docker compose pull
               docker compose up -d
+              docker image prune -f
           EOF
+
+# [설정 가이드]
+# 깃헙 레포 Settings > Secrets and variables > Actions 에 등록
+#
+# 1. Secrets
+# - EC2_SSH_PRIVATE_KEY
+# - EC2_SERVER_HOST
+#
+# 2. Variables
+# - NGINX_IMG_NAME, NGINX_IMG_TAG
+# - EC2_SERVER_USER
