@@ -5,10 +5,21 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ssl_data:/app/ssl/letsencrypt:ro # Certbot이 만든 인증서 공유
+      # 템플릿 파일 넣어주고 결과물은 커맨드로 생성함
+      - ./nginx.conf.template:/etc/nginx/nginx.conf.template:ro
+      - ssl_data:/app/ssl/letsencrypt:ro
     env_file:
       - .env
+    environment:
+      # 템플릿에서 쓸 변수들
+      - DOMAIN=${DOMAIN}
+      - WS_HOST=${WS_HOST}
+      - WS_PORT=${WS_PORT}
+      - API_SERVER_HOST=${API_SERVER_HOST}
+      - API_SERVER_PORT=${API_SERVER_PORT}
+    # 템플릿($변수)을 실제 값으로 바꾼 뒤 nginx 실행
+    # $DOMAIN 도 추가했음
+    command: /bin/sh -c "envsubst '\$DOMAIN \$WS_HOST \$WS_PORT \$API_SERVER_HOST \$API_SERVER_PORT' < /etc/nginx/nginx.conf.template > /etc/nginx/nginx.conf && nginx -g 'daemon off;'"
     restart: always
 
 volumes:
