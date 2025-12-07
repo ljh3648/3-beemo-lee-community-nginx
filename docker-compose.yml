@@ -1,12 +1,14 @@
 services:
   nginx:
-    image: ${DOCKER_IMG_NAME}:${DOCKER_IMG_TAG}
+    image: ${NGINX_IMG_NAME}:${NGINX_IMG_TAG}
     ports:
       - "80:80"
       - "443:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
-      - ssl_data:/app/ssl/letsencrypt:ro # ssl 인증서
+      - ssl_data:/app/ssl/letsencrypt:ro # Certbot이 만든 인증서 공유
+    env_file:
+      - .env
     restart: always
 
 volumes:
